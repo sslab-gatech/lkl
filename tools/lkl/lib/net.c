@@ -3,42 +3,6 @@
 #include "endian.h"
 #include <lkl_host.h>
 
-#ifdef __MINGW32__
-#include <ws2tcpip.h>
-
-int lkl_inet_pton(int af, const char *src, void *dst)
-{
-	struct addrinfo hint, *res = NULL;
-	int err;
-
-	memset(&hint, 0, sizeof(struct addrinfo));
-
-	hint.ai_family = af;
-	hint.ai_flags = AI_NUMERICHOST;
-
-	err = getaddrinfo(src, NULL, &hint, &res);
-	if (err)
-		return 0;
-
-	switch (af) {
-	case AF_INET:
-		*(struct in_addr *)dst =
-			((struct sockaddr_in *)&res->ai_addr)->sin_addr;
-		break;
-	case AF_INET6:
-		*(struct in6_addr *)dst =
-			((struct sockaddr_in6 *)&res->ai_addr)->sin6_addr;
-		break;
-	default:
-		freeaddrinfo(res);
-		return 0;
-	}
-
-	freeaddrinfo(res);
-	return 1;
-}
-#endif
-
 static inline void set_sockaddr(struct lkl_sockaddr_in *sin, unsigned int addr,
 				unsigned short port)
 {
@@ -51,24 +15,6 @@ static inline int ifindex_to_name(int sock, struct lkl_ifreq *ifr, int ifindex)
 {
 	ifr->lkl_ifr_ifindex = ifindex;
 	return lkl_sys_ioctl(sock, LKL_SIOCGIFNAME, (long)ifr);
-}
-
-int lkl_ifname_to_ifindex(const char *name)
-{
-	struct lkl_ifreq ifr;
-	int fd, ret;
-
-	fd = lkl_sys_socket(LKL_AF_INET, LKL_SOCK_DGRAM, 0);
-	if (fd < 0)
-		return fd;
-
-	strcpy(ifr.lkl_ifr_name, name);
-
-	ret = lkl_sys_ioctl(fd, LKL_SIOCGIFINDEX, (long)&ifr);
-	if (ret < 0)
-		return ret;
-
-	return ifr.lkl_ifr_ifindex;
 }
 
 int lkl_if_up(int ifindex)
@@ -651,11 +597,11 @@ static int iproute_modify(int cmd, unsigned int flags, int ifindex, int af,
 		int rmbit = route_masklen%8;
 
 		for (i = 0; i < rmbyte; i++)
-			netaddr.in6_u.u6_addr8[15-i] = 0;
-		netaddr.in6_u.u6_addr8[15-rmbyte] =
-			(netaddr.in6_u.u6_addr8[15-rmbyte] >> rmbit);
-		netaddr.in6_u.u6_addr8[15-rmbyte] =
-			(netaddr.in6_u.u6_addr8[15-rmbyte] << rmbit);
+			netaddr.in6_u.u6_addr8[16-i] = 0;
+		netaddr.in6_u.u6_addr8[16-rmbyte] =
+			(netaddr.in6_u.u6_addr8[16-rmbyte] >> rmbit);
+		netaddr.in6_u.u6_addr8[16-rmbyte] =
+			(netaddr.in6_u.u6_addr8[16-rmbyte] << rmbit);
 		*(struct lkl_in6_addr *)route_addr = netaddr;
 		req.r.rtm_dst_len = route_masklen;
 		addattr_l(&req.n, sizeof(req), LKL_RTA_DST,
@@ -749,12 +695,12 @@ int lkl_if_add_rule_from_saddr(int ifindex, int af, void *saddr)
 }
 
 static int qdisc_add(int cmd, int flags, int ifindex,
-		     const char *root, const char *type)
+		     char *root, char *type)
 {
 	struct {
 		struct lkl_nlmsghdr n;
 		struct lkl_tcmsg tc;
-		char buf[2*1024];
+		char buf[64*1024];
 	} req = {
 		.n.nlmsg_len = LKL_NLMSG_LENGTH(sizeof(struct lkl_tcmsg)),
 		.n.nlmsg_flags = LKL_NLM_F_REQUEST|flags,
@@ -777,14 +723,14 @@ static int qdisc_add(int cmd, int flags, int ifindex,
 		return fd;
 
 	// create the qdisc attribute
-	addattr_l(&req.n, sizeof(req), LKL_TCA_KIND, type, strlen(type)+1);
+	addattr_l(&req.n, sizeof(req), LKL_TCA_KIND, type, 2);
 
 	err = rtnl_talk(fd, &req.n);
 	lkl_sys_close(fd);
 	return err;
 }
 
-int lkl_qdisc_add(int ifindex, const char *root, const char *type)
+int lkl_qdisc_add(int ifindex, char *root, char *type)
 {
 	return qdisc_add(LKL_RTM_NEWQDISC, LKL_NLM_F_CREATE | LKL_NLM_F_EXCL,
 			 ifindex, root, type);
@@ -793,16 +739,13 @@ int lkl_qdisc_add(int ifindex, const char *root, const char *type)
 /* Add a qdisc entry for an interface in the form of
  * "root|type;root|type;..."
  */
-void lkl_qdisc_parse_add(int ifindex, const char *entries)
+void lkl_qdisc_parse_add(int ifindex, char *entries)
 {
 	char *saveptr = NULL, *token = NULL;
 	char *root = NULL, *type = NULL;
-	char strings[256];
 	int ret = 0;
 
-	strcpy(strings, entries);
-
-	for (token = strtok_r(strings, ";", &saveptr); token;
+	for (token = strtok_r(entries, ";", &saveptr); token;
 	     token = strtok_r(NULL, ";", &saveptr)) {
 		root = strtok(token, "|");
 		type = strtok(NULL, "|");

@@ -355,10 +355,12 @@ static int fd_get_capacity(struct lkl_disk disk, unsigned long long *res)
 		return -1;
 
 	*res = off;
-	return 0;
+
+  return 0;
 }
 
-static int do_rw(ssize_t (*fn)(), struct lkl_disk disk, struct lkl_blk_req *req)
+// static int do_rw(ssize_t (*fn)(), struct lkl_disk disk, struct lkl_blk_req *req)
+static int do_rw(struct lkl_disk disk, struct lkl_blk_req *req)
 {
 	off_t off = req->sector * 512;
 	void *addr;
@@ -372,7 +374,16 @@ static int do_rw(ssize_t (*fn)(), struct lkl_disk disk, struct lkl_blk_req *req)
 		len = req->buf[i].iov_len;
 
 		do {
-			ret = fn(disk.fd, addr, len, off);
+
+	  // ret = fn(disk.fd, addr, len, off);
+      if (req->type == LKL_DEV_BLK_TYPE_READ) {
+        // printf("read at off 0x%lx len 0x%lx\n", off, len);
+        memcpy(addr, disk.buffer + off, len);
+      } else {
+        // printf("write at off 0x%lx len 0x%lx\n", off, len);
+        memcpy(disk.buffer + off, addr, len);
+      }
+      ret = len;
 
 			if (ret <= 0) {
 				ret = -1;
@@ -396,17 +407,19 @@ static int blk_request(struct lkl_disk disk, struct lkl_blk_req *req)
 
 	switch (req->type) {
 	case LKL_DEV_BLK_TYPE_READ:
-		err = do_rw(pread, disk, req);
+		// err = do_rw(pread, disk, req);
+		err = do_rw(disk, req);
 		break;
 	case LKL_DEV_BLK_TYPE_WRITE:
-		err = do_rw(pwrite, disk, req);
+		// err = do_rw(pwrite, disk, req);
+		err = do_rw(disk, req);
 		break;
 	case LKL_DEV_BLK_TYPE_FLUSH:
 	case LKL_DEV_BLK_TYPE_FLUSH_OUT:
 #ifdef __linux__
-		err = fdatasync(disk.fd);
+		// err = fdatasync(disk.fd);
 #else
-		err = fsync(disk.fd);
+		// err = fsync(disk.fd);
 #endif
 		break;
 	default:

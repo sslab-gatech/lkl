@@ -156,9 +156,9 @@ static inline long lkl_sys_chmod(const char *path, mode_t mode)
 /**
  * lkl_sys_link - wrapper for lkl_sys_linkat
  */
-static inline long lkl_sys_link(const char *existing, const char *new)
+static inline long lkl_sys_link(const char *existing, const char *new_link)
 {
-	return lkl_sys_linkat(LKL_AT_FDCWD, existing, LKL_AT_FDCWD, new, 0);
+	return lkl_sys_linkat(LKL_AT_FDCWD, existing, LKL_AT_FDCWD, new_link, 0);
 }
 #endif
 
@@ -176,9 +176,9 @@ static inline long lkl_sys_unlink(const char *path)
 /**
  * lkl_sys_symlink - wrapper for lkl_sys_symlinkat
  */
-static inline long lkl_sys_symlink(const char *existing, const char *new)
+static inline long lkl_sys_symlink(const char *existing, const char *new_link)
 {
-	return lkl_sys_symlinkat(existing, LKL_AT_FDCWD, new);
+	return lkl_sys_symlinkat(existing, LKL_AT_FDCWD, new_link);
 }
 #endif
 
@@ -196,9 +196,9 @@ static inline long lkl_sys_readlink(const char *path, char *buf, size_t bufsize)
 /**
  * lkl_sys_rename - wrapper for lkl_sys_renameat
  */
-static inline long lkl_sys_rename(const char *old, const char *new)
+static inline long lkl_sys_rename(const char *old, const char *new_name)
 {
-	return lkl_sys_renameat(LKL_AT_FDCWD, old, LKL_AT_FDCWD, new);
+	return lkl_sys_renameat(LKL_AT_FDCWD, old, LKL_AT_FDCWD, new_name);
 }
 #endif
 
@@ -293,9 +293,11 @@ static inline long lkl_sys_select(int n, lkl_fd_set *rfds, lkl_fd_set *wfds,
  */
 static inline long lkl_sys_poll(struct lkl_pollfd *fds, int n, int timeout)
 {
-	return lkl_sys_ppoll(fds, n, timeout >= 0 ?
-			     &((struct lkl_timespec){ .tv_sec = timeout/1000,
-				   .tv_nsec = timeout%1000*1000000 }) : 0,
+	struct lkl_timespec t = {
+		.tv_sec = timeout/1000,
+		.tv_nsec = timeout%1000 * 1000000,
+	};
+	return lkl_sys_ppoll(fds, n, timeout >= 0 ? &t:0,
 			     0, _LKL_NSIG/8);
 }
 #endif
@@ -358,6 +360,10 @@ struct lkl_disk {
 		void *handle;
 	};
 	struct lkl_dev_blk_ops *ops;
+
+	/* We need this to directly read the contents of the disk image */
+	void *buffer;
+	unsigned long long capacity;
 };
 
 /**

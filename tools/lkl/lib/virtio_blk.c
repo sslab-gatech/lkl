@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <lkl_host.h>
 #include "virtio.h"
 #include "endian.h"
@@ -67,7 +68,6 @@ static struct virtio_dev_ops blk_ops = {
 	.enqueue = blk_enqueue,
 };
 
-
 int lkl_disk_add(struct lkl_disk *disk)
 {
 	struct virtio_blk_dev *dev;
@@ -93,12 +93,14 @@ int lkl_disk_add(struct lkl_disk *disk)
 		dev->ops = &lkl_dev_blk_ops;
 	dev->disk = *disk;
 
+  /*
 	ret = dev->ops->get_capacity(*disk, &capacity);
 	if (ret) {
 		ret = -LKL_ENOMEM;
 		goto out_free;
 	}
-	dev->config.capacity = capacity / 512;
+  */
+	dev->config.capacity = disk->capacity / 512;
 
 	ret = virtio_dev_setup(&dev->dev, 1, 32);
 	if (ret)
