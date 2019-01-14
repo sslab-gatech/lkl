@@ -242,25 +242,25 @@ static inline long lkl_sys_pipe(int fd[2])
 }
 #endif
 
-#ifdef __lkl__NR_sendto
+/* #ifdef __lkl__NR_sendto */
 /**
  * lkl_sys_send - wrapper for lkl_sys_sendto
  */
-static inline long lkl_sys_send(int fd, void *buf, size_t len, int flags)
-{
-	return lkl_sys_sendto(fd, buf, len, flags, 0, 0);
-}
-#endif
+/* static inline long lkl_sys_send(int fd, void *buf, size_t len, int flags) */
+/* { */
+/* 	return lkl_sys_sendto(fd, buf, len, flags, 0, 0); */
+/* } */
+/* #endif */
 
-#ifdef __lkl__NR_recvfrom
+/* #ifdef __lkl__NR_recvfrom */
 /**
  * lkl_sys_recv - wrapper for lkl_sys_recvfrom
  */
-static inline long lkl_sys_recv(int fd, void *buf, size_t len, int flags)
-{
-	return lkl_sys_recvfrom(fd, buf, len, flags, 0, 0);
-}
-#endif
+/* static inline long lkl_sys_recv(int fd, void *buf, size_t len, int flags) */
+/* { */
+/* 	return lkl_sys_recvfrom(fd, buf, len, flags, 0, 0); */
+/* } */
+/* #endif */
 
 #ifdef __lkl__NR_pselect6
 /**
