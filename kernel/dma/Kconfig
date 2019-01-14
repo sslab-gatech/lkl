@@ -15,6 +15,7 @@ config ARCH_DMA_ADDR_T_64BIT
 
 config HAVE_GENERIC_DMA_COHERENT
 	bool
+	default n
 
 config ARCH_HAS_SYNC_DMA_FOR_DEVICE
 	bool
