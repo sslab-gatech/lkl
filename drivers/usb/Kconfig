@@ -28,7 +28,7 @@ config USB_UHCI_BIG_ENDIAN_DESC
 menuconfig USB_SUPPORT
 	bool "USB support"
 	depends on HAS_IOMEM
-	default y
+	default n
 	---help---
 	  This option adds core support for Universal Serial Bus (USB).
 	  You will also need drivers from the following menu to make use of it.

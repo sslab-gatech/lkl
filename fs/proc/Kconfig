@@ -1,6 +1,6 @@
 config PROC_FS
 	bool "/proc file system support" if EXPERT
-	default y
+	default n
 	help
 	  This is a virtual file system providing information about the status
 	  of the system. "Virtual" means that it doesn't take up any space on

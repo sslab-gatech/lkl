@@ -78,7 +78,7 @@ config CORE_DUMP_DEFAULT_ELF_HEADERS
 
 config BINFMT_SCRIPT
 	tristate "Kernel support for scripts starting with #!"
-	default y
+	default n
 	help
 	  Say Y here if you want to execute interpreted scripts starting with
 	  #! followed by the path to an interpreter.

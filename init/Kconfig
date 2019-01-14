@@ -711,7 +711,7 @@ config MEMCG_SWAP_ENABLED
 config MEMCG_KMEM
 	bool
 	depends on MEMCG && !SLOB
-	default y
+	default n
 
 config BLK_CGROUP
 	bool "IO controller"

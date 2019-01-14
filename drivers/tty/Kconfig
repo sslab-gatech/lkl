@@ -1,6 +1,6 @@
 config TTY
 	bool "Enable TTY" if EXPERT
-	default y
+	default n
 	---help---
 	  Allows you to remove TTY support which can save space, and
 	  blocks features that require TTY from inclusion in the kernel.
