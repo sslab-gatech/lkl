@@ -159,6 +159,9 @@ static inline const struct raid6_calls *raid6_choose_gen(
 	const struct raid6_calls *const *algo;
 	const struct raid6_calls *best;
 
+	best = &raid6_intx2;
+
+#if 0
 	for (bestgenperf = 0, bestxorperf = 0, best = NULL, algo = raid6_algos; *algo; algo++) {
 		if (!best || (*algo)->prefer >= best->prefer) {
 			if ((*algo)->valid && !(*algo)->valid())
@@ -210,6 +213,7 @@ static inline const struct raid6_calls *raid6_choose_gen(
 				(perf*HZ) >> (20-16+RAID6_TIME_JIFFIES_LG2+1));
 		}
 	}
+#endif
 
 	if (best) {
 		pr_info("raid6: using algorithm %s gen() %ld MB/s\n",
