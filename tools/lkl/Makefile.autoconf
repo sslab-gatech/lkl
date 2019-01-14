@@ -50,7 +50,7 @@ define posix_host
   LDFLAGS += -pie
   CFLAGS += -fPIC -pthread
   SOSUF := .so
-  $(if $(call is_defined,__ANDROID__),$(call android_host),LDLIBS += -lrt -lpthread)
+  $(if $(call is_defined,__ANDROID__),$(call android_host),LDLIBS += -lrt -pthread -lz)
   $(if $(filter $(1),elf64-x86-64-freebsd),$(call bsd_host))
   $(if $(filter yes,$(dpdk)),$(call virtio_net_dpdk))
   $(if $(filter yes,$(vde)),$(call virtio_net_vde))

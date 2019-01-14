@@ -1,10 +1,10 @@
 # Do not use make's built-in rules
 # (this improves performance and avoids hard-to-debug behaviour);
 # also do not print "Entering directory..." messages from make
+include ../../../Makefile.inc
+
 .SUFFIXES:
 MAKEFLAGS += -r --no-print-directory
-
-KCONFIG?=defconfig
 
 ifneq ($(silent),1)
   ifneq ($(V),1)
@@ -45,6 +45,11 @@ export CFLAGS += -I$(OUTPUT)/include -Iinclude -Wall -g -O2 -Wextra \
 	 -Wno-unused-parameter \
 	 -Wno-missing-field-initializers -fno-strict-aliasing
 
+export CXXFLAGS += -std=c++11 -fPIC -I$(OUTPUT)/include -Iinclude -I$(SYSCALL_DIR) \
+	 -Wall -g -O2 -Wextra \
+	 -Wno-unused-parameter \
+	 -Wno-missing-field-initializers -fno-strict-aliasing
+
 -include Targets
 
 TARGETS := $(progs-y:%=$(OUTPUT)%$(EXESUF))
@@ -55,14 +60,13 @@ all: $(TARGETS)
 bin/stat:
 ifeq ($(LKL_HOST_CONFIG_BSD),y)
 	$(Q)ln -sf `which gnustat` bin/stat
-	$(Q)ln -sf `which gsed` bin/sed
 else
 	$(Q)touch bin/stat
 endif
 
 # rule to build lkl.o
 $(OUTPUT)lib/lkl.o: bin/stat
-	$(Q)$(MAKE) -C ../.. ARCH=lkl $(KOPT) $(KCONFIG)
+	$(Q)$(MAKE) -C ../.. ARCH=lkl $(KOPT) defconfig
 # this workaround is for arm32 linker (ld.gold)
 	$(Q)export PATH=$(srctree)/tools/lkl/bin/:${PATH} ;\
 	$(MAKE) -C ../.. ARCH=lkl $(KOPT) install INSTALL_PATH=$(OUTPUT)
@@ -72,19 +76,56 @@ $(OUTPUT)%$(SOSUF): LDFLAGS += -shared
 $(OUTPUT)%$(SOSUF): $(OUTPUT)%-in.o $(OUTPUT)liblkl.a
 	$(QUIET_LINK)$(CC) $(LDFLAGS) $(LDFLAGS_$*-y) -o $@ $^ $(LDLIBS) $(LDLIBS_$*-y)
 
+# Compile runtime for fuzzing
+$(OUTPUT)kafl-llvm-rt.o: $(AFL_LLVM_DIR)/kafl-llvm-rt.o.c
+	(cd $(AFL_LLVM_DIR) && env -u CPP -u CC -u MAKEFLAGS -u LDFLAGS LLVM_CONFIG=$(LLVM_CONF) make)
+	cp -f $(AFL_DIR)/kafl-llvm-rt.o $@
+
+$(OUTPUT)kcov-llvm-rt.o: $(AFL_LLVM_DIR)/kcov-llvm-rt.o.cc
+	(cd $(AFL_LLVM_DIR) && env -u CPP -u CC -u MAKEFLAGS -u LDFLAGS LLVM_CONFIG=$(LLVM_CONF) make)
+	cp -f $(AFL_DIR)/kcov-llvm-rt.o $@
+
 # liblkl is special
 $(OUTPUT)liblkl$(SOSUF): $(OUTPUT)%-in.o $(OUTPUT)lib/lkl.o
-$(OUTPUT)liblkl.a: $(OUTPUT)lib/liblkl-in.o $(OUTPUT)lib/lkl.o
+$(OUTPUT)liblkl.a: $(OUTPUT)lib/liblkl-in.o $(OUTPUT)lib/lkl.o $(OUTPUT)kafl-llvm-rt.o
+# $(OUTPUT)liblkl.a: $(OUTPUT)lib/liblkl-in.o $(OUTPUT)lib/lkl.o $(OUTPUT)kcov-llvm-rt.o
 	$(QUIET_AR)$(AR) -rc $@ $^
+
+# executer's dependencies
+
+$(OUTPUT)Image.o:
+	cp -f $(SYSCALL_DIR)/Image.o $@
+
+$(OUTPUT)Program.o:
+	cp -f $(SYSCALL_DIR)/Program.o $@
+
+$(OUTPUT)Utils.o:
+	cp -f $(SYSCALL_DIR)/Utils.o $@
+
+$(OUTPUT)Constants.o:
+	cp -f $(SYSCALL_DIR)/Constants.o $@
+
+# executor (CPP)
+$(OUTPUT)executor: $(OUTPUT)executor-in.o $(OUTPUT)Image.o $(OUTPUT)Program.o $(OUTPUT)Utils.o $(OUTPUT)Constants.o $(OUTPUT)liblkl.a
+	$(QUIET_LINK)$(CXX) $(LDFLAGS) $(LDFLAGS_$*-y) -o $@ $^ $(LDLIBS) $(LDLIBS_$*-y)
+
+# combined (CPP)
+$(OUTPUT)combined: $(OUTPUT)combined-in.o $(OUTPUT)Image.o $(OUTPUT)Program.o $(OUTPUT)Utils.o $(OUTPUT)Constants.o $(OUTPUT)liblkl.a
+	$(QUIET_LINK)$(CXX) $(LDFLAGS) $(LDFLAGS_$*-y) -o $@ $^ $(LDLIBS) $(LDLIBS_$*-y)
+
+# combined-consistency (CPP)
+$(OUTPUT)combined-consistency: $(OUTPUT)combined-consistency-in.o $(OUTPUT)Image.o $(OUTPUT)Program.o $(OUTPUT)Utils.o $(OUTPUT)Constants.o $(OUTPUT)liblkl.a
+	$(QUIET_LINK)$(CXX) $(LDFLAGS) $(LDFLAGS_$*-y) -o $@ $^ $(LDLIBS) $(LDLIBS_$*-y)
 
 # rule to link programs
 $(OUTPUT)%$(EXESUF): $(OUTPUT)%-in.o $(OUTPUT)liblkl.a
 	$(QUIET_LINK)$(CC) $(LDFLAGS) $(LDFLAGS_$*-y) -o $@ $^ $(LDLIBS) $(LDLIBS_$*-y)
+	# $(QUIET_LINK)$(CXX) $(LDFLAGS) $(LDFLAGS_$*-y) -o $@ $^ $(LDLIBS) $(LDLIBS_$*-y)
+	# $(srctree)
 
 # rule to build objects
 $(OUTPUT)%-in.o: $(OUTPUT)lib/lkl.o FORCE
 	$(Q)$(MAKE) -f $(srctree)/tools/build/Makefile.build dir=$(patsubst %/,%,$(dir $*)) obj=$(notdir $*)
-
 
 $(OUTPUT)cpfromfs$(EXESUF): cptofs$(EXESUF)
 	$(Q)if ! [ -e $@ ]; then ln -s $< $@; fi
@@ -103,10 +144,10 @@ headers_install: $(TARGETS)
 	$(call QUIET_INSTALL, headers) \
 	    install -d $(DESTDIR)$(PREFIX)/include ; \
 	    install -m 644 include/lkl.h include/lkl_host.h $(OUTPUT)include/lkl_autoconf.h \
-	      include/lkl_config.h $(DESTDIR)$(PREFIX)/include ; \
+	      $(DESTDIR)$(PREFIX)/include ; \
 	    cp -r $(OUTPUT)include/lkl $(DESTDIR)$(PREFIX)/include
 
-libraries_install: $(libs-y:%=$(OUTPUT)%$(SOSUF)) $(OUTPUT)liblkl.a
+libraries_install: $(libs-y:%=$(OUTPUT)%$(SOSUF))
 	$(call QUIET_INSTALL, libraries) \
 	    install -d $(DESTDIR)$(PREFIX)/lib ; \
 	    install -m 644 $^ $(DESTDIR)$(PREFIX)/lib
@@ -127,4 +168,3 @@ FORCE: ;
 .PHONY: headers_install libraries_install programs_install install
 .NOTPARALLEL : lib/lkl.o
 .SECONDARY:
-
