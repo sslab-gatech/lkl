@@ -4,6 +4,8 @@
 # All Rights Reserved.
 #
 
+# ccflags-y += -fsanitize-coverage=trace-pc
+
 ccflags-y += -I$(src)			# needed for trace events
 ccflags-y += -I$(src)/libxfs
 
