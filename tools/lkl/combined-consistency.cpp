@@ -668,9 +668,10 @@ int main(int argc, char **argv)
     int bug = 0;
     if (res.length() == 0) { // no bug
         unlink(tmplogname);
-    } else if (res.length() > 0 && res.find("Traceback") == 0) {
+    } else if (res.length() > 0 && res.find("Traceback") != std::string::npos) {
         // It must be an python error, coming from the emulator.
         // Save the error msg, serialized prog, and log for debugging.
+        std::cout << "he" << std::endl;
         std::string log_progpath;
         log_progpath = debugpath + tmpname_nopath + "-prog";
 
@@ -782,7 +783,7 @@ int main(int argc, char **argv)
         if (res2.length() == 0) { // fsck fixed the bug. exit.
             unlink(tmplogname);
             unlink(tmplogname2);
-        } else if (res2.length() > 0 && res2.find("Traceback") == 0) {
+        } else if (res2.length() > 0 && res2.find("Traceback") != std::string::npos) {
             std::string log_progpath;
             log_progpath = debugpath + tmpname_nopath + "-f-prog";
 
