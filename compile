@@ -2,7 +2,7 @@
 
 import sys, argparse, errno, os, shutil, subprocess
 
-supported = ['ext4', 'xfs', 'btrfs', 'f2fs', 'gfs2', 'hfsplus', 'reiserfs', 'fat']
+supported = ['ext4', 'xfs', 'btrfs', 'f2fs', 'gfs2', 'hfsplus', 'reiserfs', 'fat', 'sdcardfs']
 
 def cmd(command, check=False, shell=True):
     print(command)
