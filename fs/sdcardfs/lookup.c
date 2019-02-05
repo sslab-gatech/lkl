@@ -41,8 +41,6 @@ void sdcardfs_destroy_dentry_cache(void)
 
 void free_dentry_private_data(struct dentry *dentry)
 {
-	if (!dentry || !dentry->d_fsdata)
-		return;
 	kmem_cache_free(sdcardfs_dentry_cachep, dentry->d_fsdata);
 	dentry->d_fsdata = NULL;
 }
@@ -123,7 +121,7 @@ struct inode *sdcardfs_iget(struct super_block *sb, struct inode *lower_inode, u
 	inode->i_ino = lower_inode->i_ino;
 	sdcardfs_set_lower_inode(inode, lower_inode);
 
-	inode->i_version++;
+	inode_inc_iversion_raw(inode);
 
 	/* use different set of inode ops for symlinks & directories */
 	if (S_ISDIR(lower_inode->i_mode))
@@ -374,6 +372,7 @@ put_name:
 	lower_dentry = d_hash_and_lookup(lower_dir_dentry, &dname);
 	if (IS_ERR(lower_dentry))
 		return lower_dentry;
+
 	if (!lower_dentry) {
 		/* We called vfs_path_lookup earlier, and did not get a negative
 		 * dentry then. Don't confuse the lower filesystem by forcing
