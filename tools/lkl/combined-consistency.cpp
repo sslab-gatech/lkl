@@ -78,7 +78,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
     switch (key) {
         case 'v':
             cla->printk = 0;
-            //cla->emul_verbose = 1;
+            cla->emul_verbose = 1;
             break;
         case 't':
             cla->fsimg_type = arg;
@@ -439,10 +439,10 @@ static int do_entry(const char *fsimg_path, const char *path,
     }
 
     char record[16384] = { 0, };
-    int wnum = sprintf(record, "%s\t%d\t%zu\t%zu\t%zu\t%zu\t%zu\t%u\t%s\t",
+    int wnum = sprintf(record, "%s\t%d\t%zu\t%zu\t%zu\t%zu\t%zu\t%o\t%u\t%s\t",
             new_path, ftype_converted,
             stat.st_ino, stat.st_nlink, stat.st_size, stat.st_blksize,
-            stat.st_blocks,
+            stat.st_blocks, stat.st_mode & ~S_IFMT,
             crc, symlink_path);
     memcpy(record + wnum, xattrstr, offset);
     memcpy(record + wnum + offset, "\n", strlen("\n"));
@@ -525,7 +525,6 @@ int main(int argc, char **argv)
     struct stat st;
 
     int fd;
-
     int verbose = 0;
 
     if (argp_parse(&argp_executor, argc, argv, 0, 0, &cla) < 0)
@@ -543,7 +542,6 @@ int main(int argc, char **argv)
         mount_options = "acl,user_xattr";
     else if (!strcmp(cla.fsimg_type, "ext4"))
         mount_options = "errors=remount-ro";
-
 
     if (!cla.fsimg_path) {
         __afl_manual_init(&image_buffer, &size);
@@ -573,6 +571,14 @@ int main(int argc, char **argv)
 
     __afl_in_trace = 1;
 
+    std::string prefix;
+    if (cla.tmp_prefix)
+        prefix = cla.tmp_prefix;
+    else
+        prefix = "";
+    std::string tmpstr = prefix + std::tmpnam(nullptr) + "-" + std::to_string(getpid());
+    char const* tmplogname = tmpstr.c_str();
+
     ret = lkl_mount_dev(disk_id, cla.part, cla.fsimg_type, 0,
             mount_options, mpoint, sizeof(mpoint));
     if (ret) {
@@ -599,21 +605,36 @@ int main(int argc, char **argv)
         callcnt++;
     }
 
-    close_active_fds(prog);
+    std::string imgname_s = tmpstr + ".img";
+    char const* imgname = imgname_s.c_str();
+    int fd_crashed = open(imgname, O_RDWR | O_CREAT, 0664);
+    ret = write(fd_crashed, disk.buffer, disk.capacity);
+    fsync(fd_crashed);
+    close(fd_crashed);
+
     ret = lkl_sys_chdir("/");
-    // lkl_umount_dev(disk_id, cla.part, 0, 1000); // don't unmount!
+
+    close_active_fds(prog);
+    ret = lkl_umount_dev(disk_id, cla.part, 0, 1000);
+    ret = lkl_disk_remove(disk);
 
     unsigned int disk_id_cr;
     struct lkl_disk disk_cr;
     char mpoint_cr[32];
 
     disk_cr.ops = NULL;
-    disk_cr.buffer = disk.buffer; // memory of crashed image
+    // disk_cr.buffer = disk.buffer; // memory of crashed image
+
+    fd = open(imgname, O_RDWR);
+    if (fd < 0) return -1;
+    void* image_buffer2 = mmap(0, st.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    close(fd);
+    disk_cr.buffer = userfault_init(image_buffer2, size);
     disk_cr.capacity = size;
 
     ret = lkl_disk_add(&disk_cr);
     if (ret < 0) {
-        fprintf(stderr, "cat't add crashed disk: %s\n", lkl_strerror(ret));
+        fprintf(stderr, "can't add crashed disk: %s\n", lkl_strerror(ret));
         lkl_sys_halt();
         return -1;
     }
@@ -624,6 +645,7 @@ int main(int argc, char **argv)
             mount_options, mpoint_cr, sizeof(mpoint_cr));
     if (ret) {
         fprintf(stderr, "can't mount disk: %s\n", lkl_strerror(ret));
+        lkl_umount_dev(disk_id, cla.part, 0, 1000);
         lkl_sys_halt();
         return -1;
     }
@@ -639,13 +661,6 @@ int main(int argc, char **argv)
     }
 
     // Traverse crashed image, and write metadata to log file
-    std::string prefix;
-    if (cla.tmp_prefix)
-        prefix = cla.tmp_prefix;
-    else
-        prefix = "";
-    std::string tmpstr = prefix + std::tmpnam(nullptr) + "-" + std::to_string(getpid()) + "-" + std::to_string(gettid());
-    char const* tmplogname = tmpstr.c_str();
     FILE* fp_crashed = fopen(tmplogname, "w");
     ret = searchdir(mpoint_cr, ".", fp_crashed);
     fclose(fp_crashed);
@@ -663,15 +678,19 @@ int main(int argc, char **argv)
             tmpstr.length()-4
             );
     std::string res = check_output(emul_command);
+    if (cla.emul_verbose)
+        std::cout << res << std::endl;
 
     std::string debugpath = prefix + "/tmp/emuldebug/";
     int bug = 0;
     if (res.length() == 0) { // no bug
+        if (cla.emul_verbose)
+            std::cout << "no bug" << std::endl;
         unlink(tmplogname);
+        unlink(imgname);
     } else if (res.length() > 0 && res.find("Traceback") != std::string::npos) {
         // It must be an python error, coming from the emulator.
         // Save the error msg, serialized prog, and log for debugging.
-        std::cout << "he" << std::endl;
         std::string log_progpath;
         log_progpath = debugpath + tmpname_nopath + "-prog";
 
@@ -683,6 +702,8 @@ int main(int argc, char **argv)
 
         std::string debuglogname = debugpath + tmpname_nopath;
         rename(tmplogname, debuglogname.c_str());
+        unlink(imgname);
+        sync();
 
         std::string errname = debugpath + tmpname_nopath + "-err";
         int fd_errlog = open(errname.c_str(), O_CREAT | O_WRONLY , 0644);
@@ -691,174 +712,33 @@ int main(int argc, char **argv)
         close(fd_errlog);
 
     } else {
-        // Emulator found a consistency bug
-        // before confirming it as a bug, dump disk.buffer to a file
-        // and run fsck, remount, and retest metadata consistency
-        // to remove trivial (fsck-repairable) bugs.
-        char crashed_imgfile[256];
-        sprintf(crashed_imgfile, "%s.img.retest", tmplogname);
-
-        int fd_buf = open(crashed_imgfile, O_WRONLY | O_CREAT, 0644);
-        ret = write(fd_buf, disk.buffer, disk.capacity);
-        fsync(fd_buf);
-        close(fd_buf);
-
-        char fsck_command[256];
-        if (strcmp(cla.fsimg_type, "btrfs") == 0)
-            sprintf(fsck_command, "yes | btrfs check --repair %s 2>&1 > /dev/null", crashed_imgfile);
-        else if (strcmp(cla.fsimg_type, "ext4") == 0)
-            sprintf(fsck_command, "fsck.ext4 -p %s 2>&1 > /dev/null", crashed_imgfile);
-        else if (strcmp(cla.fsimg_type, "f2fs") == 0)
-            sprintf(fsck_command, "fsck.f2fs -f %s 2>&1 > /dev/null", crashed_imgfile);
-        else if (strcmp(cla.fsimg_type, "xfs") == 0)
-            sprintf(fsck_command, "xfs_repair -d -o force_geometry -f %s 2>&1 > /dev/null", crashed_imgfile);
-        else if (strcmp(cla.fsimg_type, "gfs2") == 0)
-            sprintf(fsck_command, "fsck.gfs -af %s 2>&1 > /dev/null", crashed_imgfile);
-
-        std::string res_fsck = check_output(fsck_command); // run fsck silently
-
-        struct lkl_disk disk_cr_fscked;
-        char mpoint_cr_fscked[32];
-        unsigned int disk_id_cr_fscked;
-        void *image_buffer_cr_fscked;
-        size_t size_cr_fscked;
-        struct stat st_cr_fscked;
-
-        lstat(crashed_imgfile, &st_cr_fscked);
-        size_cr_fscked = st_cr_fscked.st_size;
-        int fd_cr_fscked = open(crashed_imgfile, O_RDONLY);
-        if (fd_cr_fscked < 0) {
-            fprintf(stderr, "failed to open fsck'ed disk image\n");
-            unlink(crashed_imgfile);
-            unlink(tmplogname);
-            lkl_sys_halt();
-            return -1;
-        }
-        image_buffer_cr_fscked = mmap(0, size_cr_fscked, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_cr_fscked, 0);
-        close(fd_cr_fscked);
-        //ret = unlink(crashed_imgfile); // remove image dump file
-
-        disk_cr_fscked.ops = NULL;
-        disk_cr_fscked.buffer = userfault_init(image_buffer_cr_fscked, size_cr_fscked);
-        disk_cr_fscked.capacity = size_cr_fscked;
-
-        ret = lkl_disk_add(&disk_cr_fscked);
-        if (ret < 0) {
-            fprintf(stderr, "can't add disk: %s\n", lkl_strerror(ret));
-            unlink(crashed_imgfile);
-            unlink(tmplogname);
-            lkl_sys_halt();
-            return -1;
-        }
-        disk_id_cr_fscked = ret;
-
-        ret = lkl_mount_dev(disk_id_cr_fscked, cla.part, cla.fsimg_type, 0,
-                                mount_options, mpoint_cr_fscked, sizeof(mpoint_cr_fscked));
-        if (ret) {
-            fprintf(stderr, "can't mount disk: %s\n", lkl_strerror(ret));
-            unlink(crashed_imgfile);
-            unlink(tmplogname);
-            lkl_sys_halt();
-            return -1;
-        }
-
-        std::string tmpname2 = tmpstr + "-fsck";
-        char const* tmplogname2 = tmpname2.c_str();
-        FILE* fp_crashed_fsck = fopen(tmplogname2, "w");
-        ret = searchdir(mpoint_cr_fscked, ".", fp_crashed_fsck);
-        fclose(fp_crashed_fsck);
-
-        char emul_command2[256];
-
         if (cla.emul_verbose)
-            sprintf(emul_command2, "%s -i %s -t %s -p %s -c %s -v 2>&1",
-                cla.emul_path, cla.fsimg_path, cla.fsimg_type, cla.prog_path, tmplogname2);
-        else
-            sprintf(emul_command2, "%s -i %s -t %s -p %s -c %s 2>&1",
-                cla.emul_path, cla.fsimg_path, cla.fsimg_type, cla.prog_path, tmplogname2);
+            std::cout << "Bug after all" << std::endl;
+        bug = 1;
+        // save the first log before fsck
+        std::string logpath;
+        logpath += cla.log_dir;
+        logpath += tmpname_nopath;
+        ret = rename(tmplogname, logpath.c_str());
 
-        std::string tmpname_nopath2 = tmpname2.substr(4, tmpname2.length()-4);
-        std::string res2 = check_output(emul_command2);
+        std::string log_progpath; // to save the serialized program
+        log_progpath = logpath + "-prog";
 
-        if (res2.length() == 0) { // fsck fixed the bug. exit.
-            unlink(tmplogname);
-            unlink(tmplogname2);
-        } else if (res2.length() > 0 && res2.find("Traceback") != std::string::npos) {
-            std::string log_progpath;
-            log_progpath = debugpath + tmpname_nopath + "-f-prog";
+        int fd_log_progpath = open(log_progpath.c_str(), O_RDWR | O_CREAT, 0644);
+        int fd_prog_path = open(cla.prog_path, O_RDONLY);
 
-            int fd_log_progpath = open(log_progpath.c_str(), O_RDWR | O_CREAT, 0644);
-            int fd_prog_path = open(cla.prog_path, O_RDONLY);
-            struct stat st;
-            fstat(fd_prog_path, &st);
-            ret = sendfile(fd_log_progpath, fd_prog_path, NULL, st.st_size);
+        struct stat st;
+        fstat(fd_prog_path, &st);
+        ret = sendfile(fd_log_progpath, fd_prog_path, NULL, st.st_size);
 
-            std::string debuglogname = debugpath + tmpname_nopath + "-f";
-            rename(tmplogname2, debuglogname.c_str());
+        std::string final_crashed_imgfile = logpath + ".img";
+        rename(imgname, final_crashed_imgfile.c_str());
+        sync();
 
-            std::string errname = debugpath + tmpname_nopath + "-f-err";
-            int fd_errlog = open(errname.c_str(), O_CREAT | O_WRONLY , 0644);
-            write(fd_errlog, res.c_str(), res.length());
-            fsync(fd_errlog);
-            close(fd_errlog);
-
-            unlink(tmplogname);
-            unlink(crashed_imgfile);
-
-        } else { // finally, confirm as a bug, and copy logs
-            bug = 1;
-            // save the first log before fsck
-            std::string logpath;
-            logpath += cla.log_dir;
-            logpath += tmpname_nopath;
-            ret = rename(tmplogname, logpath.c_str());
-
-            /*
-            off_t bytes_copied = 0;
-            int fd_log1 = open(logpath.c_str(), O_RDWR | O_CREAT, 0664);
-            int fd_tmp1 = open(tmplogname, O_RDONLY);
-            fstat(fd_tmp1, &fileinfo);
-            ret = sendfile(fd_log1, fd_tmp1, &bytes_copied, fileinfo.st_size);
-            if (ret == -1) {
-                fprintf(stderr, "sendfile fail: %s (%s)\n", logpath.c_str(), strerror(errno));
-            }
-            */
-
-            // save the second log after fsck
-            std::string logpath2;
-            logpath2 += cla.log_dir;
-            logpath2 += tmpname_nopath2;
-            ret = rename(tmplogname2, logpath2.c_str());
-            /*
-            int fd_log2 = open(logpath2.c_str(), O_RDWR | O_CREAT, 0664);
-            int fd_tmp2 = open(tmplogname2, O_RDONLY);
-            fstat(fd_tmp2, &fileinfo);
-            ret = sendfile(fd_log2, fd_tmp2, &bytes_copied, fileinfo.st_size);
-            if (ret == -1) {
-                fprintf(stderr, "sendfile fail: %s (%s)\n", logpath2.c_str(), strerror(errno));
-            }
-            */
-
-            std::string log_progpath; // to save the serialized program
-            log_progpath = logpath + "-prog";
-
-            int fd_log_progpath = open(log_progpath.c_str(), O_RDWR | O_CREAT, 0644);
-            int fd_prog_path = open(cla.prog_path, O_RDONLY);
-
-            struct stat st;
-            fstat(fd_prog_path, &st);
-            ret = sendfile(fd_log_progpath, fd_prog_path, NULL, st.st_size);
-
-            std::string final_crashed_imgfile = logpath + ".img";
-            rename(crashed_imgfile, final_crashed_imgfile.c_str());
-
-            close(fd_log_progpath);
-            close(fd_prog_path);
-        }
+        close(fd_log_progpath);
+        close(fd_prog_path);
 
         ret = lkl_sys_chdir("/");
-        lkl_umount_dev(disk_id_cr_fscked, cla.part, 0, 1000);
-        lkl_disk_remove(disk_cr_fscked);
     }
 
     close_active_fds(prog);
@@ -879,8 +759,10 @@ int main(int argc, char **argv)
     lkl_sys_halt();
     munmap(image_buffer, size);
 
+    if (cla.emul_verbose)
+        return 0;
     if (bug) {
-        system("rm /tmp/file*"); // ad-hoc approach to clean up tmp directory
+        //system("rm /tmp/file*"); // ad-hoc approach to clean up tmp directory
         puts("bug!");
         // use SIGUSR2 for notifying the fuzzer of a crash consistency bug
         raise(SIGUSR2);
