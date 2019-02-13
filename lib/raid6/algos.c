@@ -44,12 +44,12 @@ const struct raid6_calls * const raid6_algos[] = {
 	&raid6_avx2x2,
 	&raid6_avx2x1,
 #endif
-	&raid6_sse2x2,
-	&raid6_sse2x1,
-	&raid6_sse1x2,
-	&raid6_sse1x1,
-	&raid6_mmxx2,
-	&raid6_mmxx1,
+	/* &raid6_sse2x2, */
+	/* &raid6_sse2x1, */
+	/* &raid6_sse1x2, */
+	/* &raid6_sse1x1, */
+	/* &raid6_mmxx2, */
+	/* &raid6_mmxx1, */
 #endif
 #if defined(__x86_64__) && !defined(__arch_um__)
 #ifdef CONFIG_AS_AVX512
@@ -62,9 +62,9 @@ const struct raid6_calls * const raid6_algos[] = {
 	&raid6_avx2x2,
 	&raid6_avx2x1,
 #endif
-	&raid6_sse2x4,
-	&raid6_sse2x2,
-	&raid6_sse2x1,
+	/* &raid6_sse2x4, */
+	/* &raid6_sse2x2, */
+	/* &raid6_sse2x1, */
 #endif
 #ifdef CONFIG_ALTIVEC
 	&raid6_vpermxor8,
