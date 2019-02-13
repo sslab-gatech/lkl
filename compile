@@ -28,7 +28,7 @@ if __name__ == '__main__':
   #   sys.exit(1)
 
   if args.c:
-    cmd('make clean', check=True)
+    cmd('make mrproper', check=True)
     cmd('make -C tools/lkl clean', check=True)
 
   # copy config
