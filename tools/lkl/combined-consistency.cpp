@@ -55,12 +55,14 @@ static struct argp_option options[] = {
     {"log-path", 'l', "string", 0, "dir to store consistency testing logs - mandatory"},
     {"output-directory", 'o', "string", 0, "path to afl output directory - mandatory"},
     {"tmp-prefix-dir", 'd', "string", 0, "prefix for /tmp directory"},
+    {"fifo-mode", 'f', 0, 0, "select fifo mode"},
     {0},
 };
 
 static struct cl_args {
     int printk;
     int emul_verbose;
+    int fifo_mode;
     int part;
     const char *fsimg_type;
     const char *fsimg_path;
@@ -97,6 +99,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             break;
         case 'd':
             cla->tmp_prefix = arg;
+            break;
+        case 'f':
+            cla->fifo_mode = 1;
             break;
         default:
             return ARGP_ERR_UNKNOWN;
@@ -582,7 +587,7 @@ int main(int argc, char **argv)
     ret = lkl_mount_dev(disk_id, cla.part, cla.fsimg_type, 0,
             mount_options, mpoint, sizeof(mpoint));
     if (ret) {
-        fprintf(stderr, "can't mount disk: %s\n", lkl_strerror(ret));
+        fprintf(stderr, "can't mount base img disk: %s\n", lkl_strerror(ret));
         lkl_sys_halt();
         return -1;
     }
@@ -644,7 +649,7 @@ int main(int argc, char **argv)
     ret = lkl_mount_dev(disk_id_cr, cla.part, cla.fsimg_type, 0,
             mount_options, mpoint_cr, sizeof(mpoint_cr));
     if (ret) {
-        fprintf(stderr, "can't mount disk: %s\n", lkl_strerror(ret));
+        fprintf(stderr, "can't mount crashed disk: %s\n", lkl_strerror(ret));
         lkl_umount_dev(disk_id, cla.part, 0, 1000);
         lkl_sys_halt();
         return -1;
@@ -666,12 +671,21 @@ int main(int argc, char **argv)
     fclose(fp_crashed);
 
     char emul_command[256];
-    if (cla.emul_verbose)
-        sprintf(emul_command, "%s -i %s -t %s -p %s -c %s -v 2>&1",
-            cla.emul_path, cla.fsimg_path, cla.fsimg_type, cla.prog_path, tmplogname);
-    else
-        sprintf(emul_command, "%s -i %s -t %s -p %s -c %s 2>&1",
-            cla.emul_path, cla.fsimg_path, cla.fsimg_type, cla.prog_path, tmplogname);
+    if (cla.emul_verbose) {
+        if (cla.fifo_mode)
+            sprintf(emul_command, "%s -i %s -t %s -p %s -c %s -v -f 2>&1",
+                cla.emul_path, cla.fsimg_path, cla.fsimg_type, cla.prog_path, tmplogname);
+        else
+            sprintf(emul_command, "%s -i %s -t %s -p %s -c %s -v 2>&1",
+                cla.emul_path, cla.fsimg_path, cla.fsimg_type, cla.prog_path, tmplogname);
+    } else {
+        if (cla.fifo_mode)
+            sprintf(emul_command, "%s -i %s -t %s -p %s -c %s -f 2>&1",
+                cla.emul_path, cla.fsimg_path, cla.fsimg_type, cla.prog_path, tmplogname);
+        else
+            sprintf(emul_command, "%s -i %s -t %s -p %s -c %s 2>&1",
+                cla.emul_path, cla.fsimg_path, cla.fsimg_type, cla.prog_path, tmplogname);
+    }
 
     std::string tmpname_nopath = tmpstr.substr(
             prefix.length() + 4,
