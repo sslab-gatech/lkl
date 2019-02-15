@@ -67,11 +67,8 @@ struct bug_entry {
 
 #define WARN_ON_ONCE(condition) ({				\
 	int __ret_warn_on = !!(condition);			\
-	if (unlikely(__ret_warn_on)) {				\
+	if (unlikely(__ret_warn_on))				\
 		__WARN_ONCE_TAINT(TAINT_WARN);			\
-		barrier_before_unreachable(); 			\
-		panic("BUG!"); 					\
-	}							\
 	unlikely(__ret_warn_on);				\
 })
 #endif
@@ -123,11 +120,8 @@ void __warn(const char *file, int line, void *caller, unsigned taint,
 #ifndef WARN_ON
 #define WARN_ON(condition) ({						\
 	int __ret_warn_on = !!(condition);				\
-	if (unlikely(__ret_warn_on)) {					\
+	if (unlikely(__ret_warn_on))					\
 		__WARN();						\
-		barrier_before_unreachable(); 				\
-		panic("BUG!"); 						\
-	} 								\
 	unlikely(__ret_warn_on);					\
 })
 #endif
@@ -135,22 +129,16 @@ void __warn(const char *file, int line, void *caller, unsigned taint,
 #ifndef WARN
 #define WARN(condition, format...) ({					\
 	int __ret_warn_on = !!(condition);				\
-	if (unlikely(__ret_warn_on)) {					\
+	if (unlikely(__ret_warn_on))					\
 		__WARN_printf(format);					\
-		barrier_before_unreachable(); 				\
-		panic("BUG!"); 						\
-	}								\
 	unlikely(__ret_warn_on);					\
 })
 #endif
 
 #define WARN_TAINT(condition, taint, format...) ({			\
 	int __ret_warn_on = !!(condition);				\
-	if (unlikely(__ret_warn_on)) {					\
+	if (unlikely(__ret_warn_on))					\
 		__WARN_printf_taint(taint, format);			\
-		barrier_before_unreachable(); 				\
-		panic("BUG!"); 						\
-	} 								\
 	unlikely(__ret_warn_on);					\
 })
 
