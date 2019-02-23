@@ -42,6 +42,7 @@ config LKL
        select ARCH_NO_COHERENT_DMA_MMAP
        select HAVE_MEMBLOCK
        select NO_BOOTMEM
+       select DEBUG_BUGVERBOSE
 
 config OUTPUT_FORMAT
        string "Output format"
