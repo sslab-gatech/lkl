@@ -56,6 +56,7 @@ static struct argp_option options[] = {
     {"output-directory", 'o', "string", 0, "path to afl output directory - mandatory"},
     {"tmp-prefix-dir", 'd', "string", 0, "prefix for /tmp directory"},
     {"fifo-mode", 'f', 0, 0, "select fifo mode"},
+    {"remove-image", 'r', 0, 0, "remove crashed image dump from disk"},
     {0},
 };
 
@@ -64,6 +65,7 @@ static struct cl_args {
     int emul_verbose;
     int fifo_mode;
     int part;
+    int rmimg;
     const char *fsimg_type;
     const char *fsimg_path;
     const char *prog_path;
@@ -102,6 +104,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             break;
         case 'f':
             cla->fifo_mode = 1;
+            break;
+        case 'r':
+            cla->rmimg = 1;
             break;
         default:
             return ARGP_ERR_UNKNOWN;
@@ -747,7 +752,10 @@ int main(int argc, char **argv)
         ret = sendfile(fd_log_progpath, fd_prog_path, NULL, st.st_size);
 
         std::string final_crashed_imgfile = logpath + ".img";
-        rename(imgname, final_crashed_imgfile.c_str());
+        if (cla.rmimg)
+            unlink(imgname);
+        else
+            rename(imgname, final_crashed_imgfile.c_str());
         sync();
 
         close(fd_log_progpath);
