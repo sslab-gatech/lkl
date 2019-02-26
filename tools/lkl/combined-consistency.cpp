@@ -44,7 +44,7 @@
 namespace fs = std::experimental::filesystem;
 
 static const char doc_executor[] = "File system fuzzing executor";
-static const char args_doc_executor[] = "-t fstype -i fsimage -e emulator -d tmp_prefix -p program";
+static const char args_doc_executor[] = "-t fstype -i fsimage_path -e emulator_path -d tmp_prefix -p program_path (-f) (-r) (-v)";
 
 static struct argp_option options[] = {
     {"enable-printk", 'v', 0, 0, "show Linux printks"},
@@ -53,7 +53,6 @@ static struct argp_option options[] = {
     {"serialized-program", 'p', "string", 0, "serialized program - mandatory"},
     {"emulator-path", 'e', "string", 0, "path to the emulator script - mandatory"},
     {"log-path", 'l', "string", 0, "dir to store consistency testing logs - mandatory"},
-    {"output-directory", 'o', "string", 0, "path to afl output directory - mandatory"},
     {"tmp-prefix-dir", 'd', "string", 0, "prefix for /tmp directory"},
     {"fifo-mode", 'f', 0, 0, "select fifo mode"},
     {"remove-image", 'r', 0, 0, "remove crashed image dump from disk"},
@@ -71,7 +70,6 @@ static struct cl_args {
     const char *prog_path;
     const char *emul_path;
     const char *log_dir;
-    const char *output_path;
     const char *tmp_prefix;
 } cla;
 
