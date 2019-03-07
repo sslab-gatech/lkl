@@ -44,7 +44,7 @@
 namespace fs = std::experimental::filesystem;
 
 static const char doc_executor[] = "File system fuzzing executor";
-static const char args_doc_executor[] = "-t fstype -i fsimage -e emulator -d tmp_prefix -p program";
+static const char args_doc_executor[] = "-t fstype -i fsimage_path -e emulator_path -d tmp_prefix -p program_path (-f) (-r) (-v)";
 
 static struct argp_option options[] = {
     {"enable-printk", 'v', 0, 0, "show Linux printks"},
@@ -53,9 +53,9 @@ static struct argp_option options[] = {
     {"serialized-program", 'p', "string", 0, "serialized program - mandatory"},
     {"emulator-path", 'e', "string", 0, "path to the emulator script - mandatory"},
     {"log-path", 'l', "string", 0, "dir to store consistency testing logs - mandatory"},
-    {"output-directory", 'o', "string", 0, "path to afl output directory - mandatory"},
     {"tmp-prefix-dir", 'd', "string", 0, "prefix for /tmp directory"},
     {"fifo-mode", 'f', 0, 0, "select fifo mode"},
+    {"remove-image", 'r', 0, 0, "remove crashed image dump from disk"},
     {0},
 };
 
@@ -64,12 +64,12 @@ static struct cl_args {
     int emul_verbose;
     int fifo_mode;
     int part;
+    int rmimg;
     const char *fsimg_type;
     const char *fsimg_path;
     const char *prog_path;
     const char *emul_path;
     const char *log_dir;
-    const char *output_path;
     const char *tmp_prefix;
 } cla;
 
@@ -102,6 +102,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             break;
         case 'f':
             cla->fifo_mode = 1;
+            break;
+        case 'r':
+            cla->rmimg = 1;
             break;
         default:
             return ARGP_ERR_UNKNOWN;
@@ -642,6 +645,7 @@ int main(int argc, char **argv)
     if (ret < 0) {
         fprintf(stderr, "can't add crashed disk: %s\n", lkl_strerror(ret));
         lkl_sys_halt();
+        unlink(imgname);
         return -1;
     }
     disk_id_cr = ret;
@@ -653,6 +657,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "can't mount crashed disk: %s\n", lkl_strerror(ret));
         lkl_umount_dev(disk_id, cla.part, 0, 1000);
         lkl_sys_halt();
+        unlink(imgname);
         return -1;
     }
 
@@ -663,6 +668,7 @@ int main(int argc, char **argv)
         lkl_umount_dev(disk_id, cla.part, 0, 1000);
         lkl_umount_dev(disk_id_cr, cla.part, 0, 1000);
         lkl_sys_halt();
+        unlink(imgname);
         return -1;
     }
 
@@ -692,6 +698,8 @@ int main(int argc, char **argv)
             prefix.length() + 4,
             tmpstr.length()-4
             );
+    if (cla.emul_verbose)
+        std::cout << "emulator command: " << emul_command << std::endl;
     std::string res = check_output(emul_command);
     if (cla.emul_verbose)
         std::cout << res << std::endl;
@@ -747,7 +755,10 @@ int main(int argc, char **argv)
         ret = sendfile(fd_log_progpath, fd_prog_path, NULL, st.st_size);
 
         std::string final_crashed_imgfile = logpath + ".img";
-        rename(imgname, final_crashed_imgfile.c_str());
+        if (cla.rmimg)
+            unlink(imgname);
+        else
+            rename(imgname, final_crashed_imgfile.c_str());
         sync();
 
         close(fd_log_progpath);
