@@ -645,6 +645,7 @@ int main(int argc, char **argv)
     if (ret < 0) {
         fprintf(stderr, "can't add crashed disk: %s\n", lkl_strerror(ret));
         lkl_sys_halt();
+        unlink(imgname);
         return -1;
     }
     disk_id_cr = ret;
@@ -656,6 +657,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "can't mount crashed disk: %s\n", lkl_strerror(ret));
         lkl_umount_dev(disk_id, cla.part, 0, 1000);
         lkl_sys_halt();
+        unlink(imgname);
         return -1;
     }
 
@@ -666,6 +668,7 @@ int main(int argc, char **argv)
         lkl_umount_dev(disk_id, cla.part, 0, 1000);
         lkl_umount_dev(disk_id_cr, cla.part, 0, 1000);
         lkl_sys_halt();
+        unlink(imgname);
         return -1;
     }
 
@@ -695,6 +698,8 @@ int main(int argc, char **argv)
             prefix.length() + 4,
             tmpstr.length()-4
             );
+    if (cla.emul_verbose)
+        std::cout << "emulator command: " << emul_command << std::endl;
     std::string res = check_output(emul_command);
     if (cla.emul_verbose)
         std::cout << res << std::endl;
