@@ -56,6 +56,7 @@ static struct argp_option options[] = {
     {"tmp-prefix-dir", 'd', "string", 0, "prefix for /tmp directory"},
     {"fifo-mode", 'f', 0, 0, "select fifo mode"},
     {"remove-image", 'r', 0, 0, "remove crashed image dump from disk"},
+    {"no-sigraise", 'n', 0, 0, "Do not raise SIGUSR2"},
     {0},
 };
 
@@ -65,6 +66,7 @@ static struct cl_args {
     int fifo_mode;
     int part;
     int rmimg;
+    int no_sigraise;
     const char *fsimg_type;
     const char *fsimg_path;
     const char *prog_path;
@@ -105,6 +107,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             break;
         case 'r':
             cla->rmimg = 1;
+            break;
+        case 'n':
+            cla->no_sigraise = 1;
             break;
         default:
             return ARGP_ERR_UNKNOWN;
@@ -536,6 +541,7 @@ int main(int argc, char **argv)
     int fd;
     int verbose = 0;
 
+    cla.no_sigraise = 0;
     if (argp_parse(&argp_executor, argc, argv, 0, 0, &cla) < 0)
         return -1;
 
@@ -677,7 +683,7 @@ int main(int argc, char **argv)
     ret = searchdir(mpoint_cr, ".", fp_crashed);
     fclose(fp_crashed);
 
-    char emul_command[256];
+    char emul_command[1024];
     if (cla.emul_verbose) {
         if (cla.fifo_mode)
             sprintf(emul_command, "%s -i %s -t %s -p %s -c %s -v -f 2>&1",
@@ -791,7 +797,9 @@ int main(int argc, char **argv)
         //system("rm /tmp/file*"); // ad-hoc approach to clean up tmp directory
         puts("bug!");
         // use SIGUSR2 for notifying the fuzzer of a crash consistency bug
-        raise(SIGUSR2);
+        fflush(NULL);
+        if (!cla.no_sigraise)
+            raise(SIGUSR2);
     }
 
     __afl_in_trace = 0;
