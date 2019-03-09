@@ -39,8 +39,6 @@ if __name__ == '__main__':
   cmd('make -C tools/lkl -j CC="%s/../ff-gcc/ff-gcc fs/%s"' % (dir_path, args.type))
 
   # copy object file
-  cmd('cp -f tools/lkl/fsfuzz tools/lkl/%s-fsfuzz' % args.type)
   cmd('cp -f tools/lkl/executor tools/lkl/%s-executor' % args.type)
-  cmd('cp -f tools/lkl/tfuzz tools/lkl/%s-tfuzz' % args.type)
   cmd('cp -f tools/lkl/combined tools/lkl/%s-combined' % args.type)
   cmd('cp -f tools/lkl/combined-consistency tools/lkl/%s-combined-consistency' % args.type)
