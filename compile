@@ -20,7 +20,7 @@ if __name__ == '__main__':
   args = parser.parse_args()
 
   if args.type is None or args.type not in supported:
-    print 'Please set valid type'
+    print('Please set valid type')
     sys.exit(1)
 
   # if args.object is None or args.object not in ['fsfuzz', 'executor']:
